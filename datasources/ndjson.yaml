@@ -1,0 +1,133 @@
+identity:
+  author: shaba
+  name: ndjson
+  label:
+    en_US: Load NDJSON dump
+    ru_RU: Загрузка NDJSON-дампа
+description:
+  en_US: Ingest a bulk NDJSON dump (optionally via a JSON manifest of gzipped exports) as one document per record.
+  ru_RU: Загрузить bulk-дамп NDJSON (опц. через JSON-манифест gzip-экспортов) — по одному документу на запись.
+parameters:
+  - name: source_url
+    type: string
+    required: true
+    label:
+      en_US: Source URL
+      ru_RU: URL источника
+    description:
+      en_US: URL of a JSON manifest (with an "exports" array) or a bare .ndjson / .ndjson.gz file.
+      ru_RU: URL JSON-манифеста (с массивом "exports") либо .ndjson / .ndjson.gz напрямую.
+  - name: sections
+    type: string
+    required: false
+    label:
+      en_US: Sections filter
+      ru_RU: Фильтр секций
+    description:
+      en_US: 'Manifest only: comma-separated section values to keep, e.g. 1,5,8. Empty = all.'
+      ru_RU: 'Только для манифеста: секции через запятую, напр. 1,5,8. Пусто = все.'
+  - name: langs
+    type: string
+    required: false
+    label:
+      en_US: Languages filter
+      ru_RU: Фильтр языков
+    description:
+      en_US: 'Manifest only: comma-separated lang values to keep, e.g. ru,en. Empty = all.'
+      ru_RU: 'Только для манифеста: языки через запятую, напр. ru,en. Пусто = все.'
+  - name: url_field
+    type: string
+    required: false
+    default: url
+    label:
+      en_US: URL field
+      ru_RU: Поле URL
+    description:
+      en_US: Record field mapped to the document source URL.
+      ru_RU: Поле записи, отображаемое в source URL документа.
+  - name: title_field
+    type: string
+    required: false
+    default: title
+    label:
+      en_US: Title field
+      ru_RU: Поле заголовка
+    description:
+      en_US: Record field mapped to the document title.
+      ru_RU: Поле записи, отображаемое в заголовок документа.
+  - name: content_field
+    type: string
+    required: false
+    default: text
+    label:
+      en_US: Content field
+      ru_RU: Поле контента
+    description:
+      en_US: Record field mapped to the document body.
+      ru_RU: Поле записи, отображаемое в тело документа.
+  - name: metadata_fields
+    type: string
+    required: false
+    label:
+      en_US: Metadata fields
+      ru_RU: Поля метаданных
+    description:
+      en_US: 'Comma-separated fields inlined as a header line in content, e.g. section,package,lang,branch,version.'
+      ru_RU: 'Поля через запятую, вшиваемые шапкой в контент, напр. section,package,lang,branch,version.'
+  - name: filter_field
+    type: string
+    required: false
+    label:
+      en_US: Filter field
+      ru_RU: Поле фильтра
+    description:
+      en_US: 'Only ingest records where this field equals Filter value, e.g. canonical. Empty = no filter.'
+      ru_RU: 'Ингестить только записи, где это поле равно значению фильтра, напр. canonical. Пусто = без фильтра.'
+  - name: filter_value
+    type: string
+    required: false
+    label:
+      en_US: Filter value
+      ru_RU: Значение фильтра
+    description:
+      en_US: 'Value the Filter field must equal, e.g. true.'
+      ru_RU: 'Значение, которому должно быть равно поле фильтра, напр. true.'
+  - name: max_records
+    type: number
+    required: false
+    min: 1
+    label:
+      en_US: Max records
+      ru_RU: Максимум записей
+    description:
+      en_US: Stop after ingesting this many records. Empty = no cap.
+      ru_RU: Остановиться после стольких записей. Пусто = без ограничения.
+  - name: verify_checksum
+    type: boolean
+    required: false
+    default: true
+    label:
+      en_US: Verify checksums
+      ru_RU: Проверять контрольные суммы
+    description:
+      en_US: 'Manifest only: verify each export against its sha256 before ingesting.'
+      ru_RU: 'Только для манифеста: сверять sha256 каждого экспорта перед ингестом.'
+output_schema:
+  type: object
+  properties:
+    source_url:
+      type: string
+      description: the source url of the record
+    content:
+      type: string
+      description: the record content (with optional metadata header)
+    title:
+      type: string
+      description: the record title
+    description:
+      type: string
+      description: the record description
+provider_type: website_crawl
+extra:
+  python:
+    source: datasources/ndjson.py

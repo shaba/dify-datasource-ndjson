@@ -1,0 +1,41 @@
+identity:
+  author: shaba
+  name: ndjson
+  label:
+    en_US: NDJSON dump
+    ru_RU: NDJSON-дамп
+  description:
+    en_US: Load a bulk NDJSON dump into a Knowledge base, one document per record.
+    ru_RU: Загрузка bulk-дампа NDJSON в базу знаний — по одному документу на запись.
+  icon: icon.svg
+credentials_schema:
+  - name: user_agent
+    type: text-input
+    required: false
+    label:
+      en_US: User-Agent (optional)
+      ru_RU: User-Agent (опц.)
+    placeholder:
+      en_US: custom User-Agent header
+  - name: token
+    type: secret-input
+    required: false
+    label:
+      en_US: Bearer token (optional)
+      ru_RU: Bearer-токен (опц.)
+    placeholder:
+      en_US: "token for a private dump (sent as Authorization: Bearer ...)"
+  - name: auth_header
+    type: secret-input
+    required: false
+    label:
+      en_US: Authorization header (optional)
+      ru_RU: Заголовок Authorization (опц.)
+    placeholder:
+      en_US: full Authorization header value, overrides Bearer token
+provider_type: website_crawl
+datasources:
+  - datasources/ndjson.yaml
+extra:
+  python:
+    source: provider/ndjson.py
