@@ -1,53 +1,44 @@
 import logging
-import time
 from collections.abc import Generator, Mapping
 from typing import Any
 
 from dify_plugin.entities.datasource import (
-    WebSiteInfo,
-    WebSiteInfoDetail,
-    WebsiteCrawlMessage,
+    DatasourceGetPagesResponse,
+    DatasourceMessage,
+    GetOnlineDocumentPageContentRequest,
+    OnlineDocumentInfo,
 )
-from dify_plugin.interfaces.datasource.website import WebsiteCrawlDatasource
+from dify_plugin.interfaces.datasource.online_document import OnlineDocumentDatasource
 
 from ndjson_source import (
     DEFAULT_UA,
-    CrawlProgress,
+    PageCache,
+    decode_recipe,
     default_fetch,
-    iter_pages,
-    stream_pages,
+    encode_recipe,
+    normalize_recipe,
+    pages_from_recipe,
+    populate,
+    recipe_key,
 )
-from ndjson_source.stream import NDJSON_TIME_BUDGET
 
 logger = logging.getLogger(__name__)
 
+# One workspace for this datasource; the id carries the encoded recipe so
+# ``_get_content`` can rebuild the cache without the datasource parameters.
+_WORKSPACE_NAME = "NDJSON dump"
 
-class NdjsonDatasource(WebsiteCrawlDatasource):
-    def _get_website_crawl(
-        self, datasource_parameters: Mapping[str, Any]
-    ) -> Generator[WebsiteCrawlMessage, None, None]:
-        source_url = str(datasource_parameters.get("source_url") or "").strip()
-        if not source_url:
-            raise ValueError("source_url is required")
 
-        def _s(name: str, default: str = "") -> str:
-            return str(datasource_parameters.get(name) or default).strip()
+class NdjsonDatasource(OnlineDocumentDatasource):
+    """NDJSON-dump online_document datasource (one page per record).
 
-        def _csv(name: str) -> list[str]:
-            return [p.strip() for p in _s(name).split(",") if p.strip()]
+    ``_get_pages`` returns a light listing (id + title, no content) and stashes the
+    rendered content in a disk cache keyed by a hash of the datasource parameters.
+    ``_get_content`` reads one page from that cache, rebuilding it once on a miss.
+    """
 
-        sections = _s("sections") or None
-        langs = _s("langs") or None
-        url_field = _s("url_field", "url")
-        title_field = _s("title_field", "title")
-        content_field = _s("content_field", "text")
-        metadata_fields = _csv("metadata_fields")
-        filter_field = _s("filter_field") or None
-        filter_value = _s("filter_value") or None
-        verify_checksum = bool(datasource_parameters.get("verify_checksum", True))
-        raw_max = datasource_parameters.get("max_records")
-        max_records: int | None = int(raw_max) if raw_max else None
-
+    def _fetch(self):
+        """Build a credential-aware ``fetch`` (custom UA + optional auth header)."""
         credentials = self.runtime.credentials or {}
         user_agent = str(credentials.get("user_agent") or DEFAULT_UA)
         headers: dict[str, str] = {}
@@ -63,61 +54,59 @@ class NdjsonDatasource(WebsiteCrawlDatasource):
                 target, timeout, user_agent=user_agent, headers=headers or None
             )
 
-        # Time budget: stop reading before the 300 s request cap so a
-        # partial-but-completed result is always returned (see NDJSON_TIME_BUDGET).
-        now = time.monotonic
-        deadline = now() + NDJSON_TIME_BUDGET
+        return fetch
 
-        crawl_res = WebSiteInfo(web_info_list=[], status="processing", total=0, completed=0)
-        yield self.create_crawl_message(crawl_res)
+    def _get_pages(
+        self, datasource_parameters: Mapping[str, Any]
+    ) -> DatasourceGetPagesResponse:
+        recipe = normalize_recipe(datasource_parameters or {})
+        workspace_id = encode_recipe(recipe)
+        cache = PageCache(recipe_key(recipe))
+        fetch = self._fetch()
 
-        page_iter = iter_pages(
-            source_url,
-            fetch=fetch,
-            sections=sections,
-            langs=langs,
-            url_field=url_field,
-            title_field=title_field,
-            content_field=content_field,
-            metadata_fields=metadata_fields,
-            filter_field=filter_field,
-            filter_value=filter_value,
-            verify_checksum=verify_checksum,
-            max_records=max_records,
+        # Single pass: render each record into the disk cache while collecting a
+        # light listing (id + title + type, NO content) for the response. The
+        # listing is one bounded message; content is pulled later, page by page.
+        pages: list[dict[str, Any]] = []
+        with cache.writer() as writer:
+            for page in pages_from_recipe(recipe, fetch=fetch):
+                writer.add(page.page_id, page.title, page.content)
+                pages.append({
+                    "page_id": page.page_id,
+                    "page_name": page.title or page.page_id,
+                    "type": page.type,
+                    "last_edited_time": "",
+                })
+
+        logger.info("ndjson: listed %d pages from %s", len(pages), recipe["source_url"])
+        info = OnlineDocumentInfo(
+            workspace_id=workspace_id,
+            workspace_name=_WORKSPACE_NAME,
+            workspace_icon="",
+            pages=pages,
+            total=len(pages),
         )
+        return DatasourceGetPagesResponse(result=[info])
 
-        # The record count is unknown until the stream is exhausted, so
-        # source_total is None (total is reported as N). max_records bounds the
-        # generator itself; the value passed here only tunes capped-reporting.
-        cap = max_records if max_records else 10**9
-        last: CrawlProgress | None = None
-        for progress in stream_pages(
-            page_iter, source_total=None, max_records=cap, now=now, deadline=deadline
-        ):
-            # Dify reads web_info_list ONLY from the final "completed" message
-            # (processing events carry just total/completed). Emitting the
-            # cumulative list on every processing snapshot is O(n^2) in payload
-            # and times out the daemon on large dumps -- so send it once, at the end.
-            if progress.status == "completed":
-                crawl_res.web_info_list = [
-                    WebSiteInfoDetail(
-                        source_url=page.source_url,
-                        content=page.content,
-                        title=page.title,
-                        description=page.description,
-                    )
-                    for page in progress.web_info
-                ]
-            else:
-                crawl_res.web_info_list = []
-            crawl_res.status = progress.status
-            crawl_res.total = progress.total
-            crawl_res.completed = progress.completed
-            yield self.create_crawl_message(crawl_res)
-            last = progress
+    def _get_content(
+        self, page: GetOnlineDocumentPageContentRequest
+    ) -> Generator[DatasourceMessage, None, None]:
+        recipe = decode_recipe(page.workspace_id)
+        cache = PageCache(recipe_key(recipe))
 
-        if last is not None and last.capped:
-            logger.info(
-                "ndjson: capped ingest of %s -- took %d records (limited by %s)",
-                source_url, last.completed, last.reason,
-            )
+        row = cache.get(page.page_id)
+        if row is None:
+            # Cache miss (evicted / plugin restarted with a wiped temp dir): rebuild
+            # it once from the recipe, then read. Subsequent pages hit the ready
+            # cache -- the source is not re-downloaded per page.
+            logger.info("ndjson: cache miss for %s, rebuilding", page.page_id)
+            populate(cache, recipe, fetch=self._fetch())
+            row = cache.get(page.page_id)
+            if row is None:
+                raise ValueError(f"page not found: {page.page_id}")
+
+        title, content = row
+        yield self.create_variable_message("page_id", page.page_id)
+        yield self.create_variable_message("workspace_id", page.workspace_id)
+        yield self.create_variable_message("title", title)
+        yield self.create_variable_message("content", content)

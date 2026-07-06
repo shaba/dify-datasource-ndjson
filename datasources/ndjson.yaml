@@ -115,19 +115,18 @@ parameters:
 output_schema:
   type: object
   properties:
-    source_url:
+    page_id:
       type: string
-      description: the source url of the record
+      description: the stable page id of the record
     content:
       type: string
       description: the record content (with optional metadata header)
     title:
       type: string
       description: the record title
-    description:
+    workspace_id:
       type: string
-      description: the record description
-provider_type: website_crawl
+      description: the workspace id
 extra:
   python:
     source: datasources/ndjson.py

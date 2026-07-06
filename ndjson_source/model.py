@@ -8,7 +8,7 @@ class Page:
     """One ingested NDJSON record, mapped to the fields Dify consumes.
 
     ``content`` may carry a compact metadata header (see ``records.record_to_page``)
-    because ``WebSiteInfoDetail`` has no dedicated metadata field.
+    because the target document has no dedicated free-form metadata field.
     """
 
     source_url: str
@@ -18,14 +18,16 @@ class Page:
 
 
 @dataclass
-class CrawlProgress:
-    """A snapshot emitted while streaming an ingest. ``web_info`` is the
-    cumulative list of pages collected so far (bounded by max_records + the time
-    budget)."""
+class DocumentPage:
+    """One online-document page: a stable ``page_id``, its ``title`` and the full
+    ``content`` (with an optional metadata header).
 
-    web_info: list[Page]
-    completed: int
-    total: int
-    status: str  # "processing" | "completed"
-    capped: bool  # stopped before the source was exhausted
-    reason: str  # "" | "max_records" | "time_budget"
+    ``_get_pages`` returns a light listing (id + title + type, no content), while
+    the content is stashed in the disk cache keyed by ``page_id`` and later pulled
+    one page at a time by ``_get_content``.
+    """
+
+    page_id: str
+    title: str
+    content: str
+    type: str

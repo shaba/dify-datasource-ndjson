@@ -34,7 +34,7 @@ credentials_schema:
       ru_RU: Заголовок Authorization (опц.)
     placeholder:
       en_US: full Authorization header value, overrides Bearer token
-provider_type: website_crawl
+provider_type: online_document
 datasources:
   - datasources/ndjson.yaml
 extra:

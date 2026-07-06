@@ -41,16 +41,3 @@ class FakeFetch:
         except KeyError as exc:  # pragma: no cover - test wiring error
             raise AssertionError(f"unexpected fetch: {url}") from exc
         return 200, self.content_type, body
-
-
-class Clock:
-    """Manually-advanced monotonic clock for deterministic budget tests."""
-
-    def __init__(self) -> None:
-        self.t = 0.0
-
-    def advance(self, dt: float) -> None:
-        self.t += dt
-
-    def __call__(self) -> float:
-        return self.t

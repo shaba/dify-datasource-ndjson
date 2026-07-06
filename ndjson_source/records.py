@@ -18,7 +18,7 @@ from .manifest import (
     select_exports,
     verify_sha256,
 )
-from .model import Page
+from .model import DocumentPage, Page
 
 # A reasonable per-file read timeout; dumps are large so this is > the crawler's.
 _FETCH_TIMEOUT = 60
@@ -103,10 +103,9 @@ def record_to_page(
 ) -> Page:
     """Map one NDJSON record to a ``Page``.
 
-    ``WebSiteInfoDetail`` (the Dify entity these become) exposes no free-form
-    metadata field, so requested ``metadata_fields`` are inlined as a compact
-    one-line header at the top of the content, e.g.
-    ``> section: 5 | package: systemd | lang: ru``.
+    The ingested document exposes no free-form metadata field, so requested
+    ``metadata_fields`` are inlined as a compact one-line header at the top of the
+    content, e.g. ``> section: 5 | package: systemd | lang: ru``.
     """
     content = str(rec.get(content_field) or "")
     if metadata_fields:
@@ -221,3 +220,76 @@ def iter_pages(
             yield from _emit(iter_lines(data, exp.url))
     else:
         yield from _emit(iter_lines(raw, source_url))
+
+
+def iter_document_pages(
+    source_url: str,
+    *,
+    fetch: Fetch = default_fetch,
+    sections: str | None = None,
+    langs: str | None = None,
+    url_field: str = "url",
+    title_field: str = "title",
+    content_field: str = "text",
+    metadata_fields: Sequence[str] = (),
+    filter_field: str | None = None,
+    filter_value: str | None = None,
+    verify_checksum: bool = True,
+    max_records: int | None = None,
+    page_type: str = "record",
+) -> Iterator[DocumentPage]:
+    """Wrap :func:`iter_pages`, assigning each record a stable ``page_id``.
+
+    The id is the record's mapped URL when present and unique; otherwise it falls
+    back to ``rec:{ordinal}``. Ordinals are deterministic (same source + same
+    mapping/filter -> same order), so a later cache rebuild reproduces exactly the
+    same ids -- which is what lets ``_get_content`` resolve a page after the cache
+    was evicted.
+    """
+    seen: set[str] = set()
+    for ordinal, page in enumerate(
+        iter_pages(
+            source_url,
+            fetch=fetch,
+            sections=sections,
+            langs=langs,
+            url_field=url_field,
+            title_field=title_field,
+            content_field=content_field,
+            metadata_fields=metadata_fields,
+            filter_field=filter_field,
+            filter_value=filter_value,
+            verify_checksum=verify_checksum,
+            max_records=max_records,
+        )
+    ):
+        page_id = page.source_url.strip()
+        if not page_id or page_id in seen:
+            page_id = f"rec:{ordinal}"
+        seen.add(page_id)
+        yield DocumentPage(
+            page_id=page_id, title=page.title, content=page.content, type=page_type
+        )
+
+
+def pages_from_recipe(recipe: dict[str, Any], *, fetch: Fetch = default_fetch) -> Iterator[DocumentPage]:
+    """Yield ``DocumentPage`` objects for a normalised ``recipe`` (see
+    :func:`ndjson_source.cache.normalize_recipe`).
+
+    Shared by the pages listing (single pass, also populating the cache) and the
+    cache-rebuild path, so both produce identical ids and content.
+    """
+    return iter_document_pages(
+        recipe["source_url"],
+        fetch=fetch,
+        sections=recipe.get("sections"),
+        langs=recipe.get("langs"),
+        url_field=recipe.get("url_field") or "url",
+        title_field=recipe.get("title_field") or "title",
+        content_field=recipe.get("content_field") or "text",
+        metadata_fields=recipe.get("metadata_fields") or (),
+        filter_field=recipe.get("filter_field"),
+        filter_value=recipe.get("filter_value"),
+        verify_checksum=bool(recipe.get("verify_checksum", True)),
+        max_records=recipe.get("max_records"),
+    )

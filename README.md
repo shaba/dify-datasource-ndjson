@@ -25,25 +25,31 @@ Each NDJSON line is parsed as one JSON object and mapped to a document via the
 is decompressed **lazily** line-by-line, so a ~45 MB compressed export is never
 fully materialised as decompressed text in memory.
 
-Ingestion streams under a **wall-clock time budget** (~240 s of the 300 s Dify
-request cap): periodic `processing` snapshots are emitted, then a final
-`completed` snapshot. If the budget or `max_records` is hit first, a
-partial-but-`completed` result is returned instead of the request being killed
-mid-stream.
+### Two-phase model (`online_document`)
 
-### Semantics note
+This is an `online_document`-type datasource, which fits large bulk dumps far
+better than `website_crawl` (which would stream every record's full content into
+the browser preview and time out on big sections). It works in two phases:
 
-This is a `website_crawl`-type datasource, but it does **not** crawl — the
-`WebsiteCrawlMessage` contract (incremental `WebSiteInfo` with a growing
-`web_info_list`) simply fits bulk ingestion perfectly. Each NDJSON record becomes
-one `WebSiteInfoDetail`.
+- **List pages** (`_get_pages`) — download and parse the source once, render each
+  record, and return a **light listing** (page id + title, **no content**). Even
+  20k records is a small message. The rendered content is written to a
+  **disk cache** (SQLite, under the system temp dir) keyed by a hash of the
+  datasource parameters.
+- **Get content** (`_get_content`) — Dify pulls content **one page at a time**
+  during indexing; each call reads a single record from the disk cache.
+
+The cache is on **disk** (not memory) because the plugin process may be recycled
+between the two phases. The `workspace_id` returned to Dify encodes the datasource
+parameters, so on a cold cache (evicted / temp wiped) `_get_content` rebuilds the
+cache **once** from the source, then serves every page from it — the dump is not
+re-downloaded per page.
 
 ### Metadata limitation
 
-`WebSiteInfoDetail` exposes only `source_url`, `title`, `content`, and
-`description` — there is **no free-form metadata field**. Any fields you list in
-`metadata_fields` are therefore inlined as a compact one-line header at the top
-of the document content, e.g.:
+The ingested document exposes only a title and content — there is **no free-form
+metadata field**. Any fields you list in `metadata_fields` are therefore inlined
+as a compact one-line header at the top of the document content, e.g.:
 
 ```
 > section: 5 | package: systemd | lang: ru | branch: sisyphus | version: 254
@@ -101,6 +107,6 @@ yamllint .
 ```
 
 The ingestion core (manifest parsing, gzip line-streaming, record→document
-mapping, and the streaming time-budget) lives in the `ndjson_source` package,
-which is **independent of the Dify SDK** so it can be unit-tested without
+mapping, page-id assignment, and the disk cache) lives in the `ndjson_source`
+package, which is **independent of the Dify SDK** so it can be unit-tested without
 `dify_plugin` installed. `datasources/ndjson.py` is the thin SDK adapter.
