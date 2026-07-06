@@ -12,9 +12,10 @@ credentials_schema:
   - name: user_agent
     type: text-input
     required: false
+    default: dify-datasource-ndjson (+https://github.com/shaba/dify-datasource-ndjson)
     label:
-      en_US: User-Agent (optional)
-      ru_RU: User-Agent (опц.)
+      en_US: User-Agent
+      ru_RU: User-Agent
     placeholder:
       en_US: custom User-Agent header
   - name: token
