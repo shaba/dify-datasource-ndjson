@@ -1,12 +1,11 @@
 # dify-datasource-ndjson
 
-A Dify datasource plugin that loads a **bulk NDJSON dump** into a Dify Knowledge
-base — one document per record — instead of crawling a live site.
+A Dify datasource plugin that loads a **bulk NDJSON (JSON Lines) dump** into a
+Dify Knowledge base — one document per record — instead of crawling a live site.
 
-It was built for the **manpages.altlinux.team** export layout (a JSON manifest
-`index.json` listing per-section/lang gzip files `man{N}.{lang}.ndjson.gz`), but
-is **generic**: any site that publishes an NDJSON dump — with or without a
-manifest — works, via configurable field mapping.
+It is **generic**: any HTTP-served NDJSON dump works — a bare `.ndjson` /
+`.ndjson.gz`, or a JSON manifest listing per-file compressed exports — via
+configurable field mapping. See [Sources](#sources) for examples.
 
 ## How it works
 
@@ -17,13 +16,14 @@ Give it a **Source URL**. The plugin auto-detects what it points at:
   plugin filters `exports` by your `sections` / `langs`, downloads each selected
   export (gzip), optionally verifies its `sha256`, decompresses it, and streams
   its records.
-- **A bare `.ndjson` or `.ndjson.gz`** — streamed directly (gzip detected by
-  magic bytes or the `.gz` suffix).
+- **A bare `.ndjson` or a compressed `.ndjson.{gz,xz,bz2,zst}`** — streamed
+  directly. Compression is auto-detected (gzip / xz / bz2 / zstd) by magic bytes,
+  falling back to the URL suffix.
 
 Each NDJSON line is parsed as one JSON object and mapped to a document via the
-`*_field` parameters. Blank and malformed lines are skipped, never fatal. gzip
-is decompressed **lazily** line-by-line, so a ~45 MB compressed export is never
-fully materialised as decompressed text in memory.
+`*_field` parameters. Blank and malformed lines are skipped, never fatal. The
+stream is decompressed **lazily** line-by-line, so a ~45 MB compressed export is
+never fully materialised as decompressed text in memory.
 
 ### Two-phase model (`online_document`)
 
@@ -52,7 +52,7 @@ metadata field**. Any fields you list in `metadata_fields` are therefore inlined
 as a compact one-line header at the top of the document content, e.g.:
 
 ```
-> section: 5 | package: systemd | lang: ru | branch: sisyphus | version: 254
+> category: tutorial | product: acme-cli | lang: en | version: 2.3
 
 <record body...>
 ```
@@ -84,6 +84,23 @@ Dify SDK with a real metadata field would let this move out of the body.
 
 The dump URL is a datasource parameter, not a credential, so credential
 validation performs no network calls.
+
+## Sources
+
+Anything that serves newline-delimited JSON over HTTP works. A few public examples:
+
+- **GH Archive** — hourly gzipped NDJSON of every public GitHub event
+  (`https://data.gharchive.org/2024-01-01-0.json.gz`); a bare `.json.gz`, no manifest.
+- **OpenAlex** — the scholarly-works snapshot ships as gzipped JSON Lines partitions
+  listed by a manifest — the manifest mode below.
+- **Hugging Face datasets** — many are published as `.jsonl` / `.jsonl.gz` files at
+  stable `resolve/main/...` URLs.
+- **Your own exports** — `mongoexport`, Elasticsearch/OpenSearch `_bulk` /
+  `elasticdump`, BigQuery *newline-delimited JSON*, ClickHouse `JSONEachRow`, or
+  anything piped through `jq -c` all emit NDJSON.
+
+Point `source_url` at the file (or a manifest) and map its fields with the
+`*_field` parameters.
 
 ## Example: manpages.altlinux.team
 

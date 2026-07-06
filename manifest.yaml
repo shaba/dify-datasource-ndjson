@@ -7,8 +7,8 @@ label:
   en_US: NDJSON dump
   ru_RU: NDJSON-дамп
 description:
-  en_US: "Load a bulk NDJSON dump (optionally via a JSON manifest of gzipped exports) into a Dify Knowledge base, one document per record. Generic field mapping; built for manpages.altlinux.team-style exports."
-  ru_RU: "Загрузка bulk-дампа NDJSON (опц. через JSON-манифест gzip-экспортов) в базу знаний Dify — по одному документу на запись. Настраиваемый маппинг полей; заточено под экспорты вида manpages.altlinux.team."
+  en_US: "Load a bulk NDJSON (JSON Lines) dump — plain or via a JSON manifest of compressed exports — into a Dify Knowledge base, one document per record, with configurable field mapping."
+  ru_RU: "Загрузка bulk-дампа NDJSON (JSON Lines) — напрямую или через JSON-манифест сжатых экспортов — в базу знаний Dify: по одному документу на запись, с настраиваемым маппингом полей."
 icon: icon.svg
 tags:
   - rag
