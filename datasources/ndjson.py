@@ -94,15 +94,22 @@ class NdjsonDatasource(WebsiteCrawlDatasource):
         for progress in stream_pages(
             page_iter, source_total=None, max_records=cap, now=now, deadline=deadline
         ):
-            crawl_res.web_info_list = [
-                WebSiteInfoDetail(
-                    source_url=page.source_url,
-                    content=page.content,
-                    title=page.title,
-                    description=page.description,
-                )
-                for page in progress.web_info
-            ]
+            # Dify reads web_info_list ONLY from the final "completed" message
+            # (processing events carry just total/completed). Emitting the
+            # cumulative list on every processing snapshot is O(n^2) in payload
+            # and times out the daemon on large dumps -- so send it once, at the end.
+            if progress.status == "completed":
+                crawl_res.web_info_list = [
+                    WebSiteInfoDetail(
+                        source_url=page.source_url,
+                        content=page.content,
+                        title=page.title,
+                        description=page.description,
+                    )
+                    for page in progress.web_info
+                ]
+            else:
+                crawl_res.web_info_list = []
             crawl_res.status = progress.status
             crawl_res.total = progress.total
             crawl_res.completed = progress.completed

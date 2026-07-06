@@ -13,7 +13,7 @@ icon: icon.svg
 tags:
   - rag
 resource:
-  memory: 268435456
+  memory: 1073741824
   permission:
     model:
       enabled: false
