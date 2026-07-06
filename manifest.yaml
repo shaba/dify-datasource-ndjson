@@ -1,4 +1,4 @@
-version: 0.0.3
+version: 0.0.4
 type: plugin
 author: shaba
 name: ndjson
@@ -23,7 +23,7 @@ plugins:
   datasources:
     - provider/ndjson.yaml
 meta:
-  version: 0.0.3
+  version: 0.0.4
   arch:
     - amd64
     - arm64

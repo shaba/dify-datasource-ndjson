@@ -1,6 +1,6 @@
 [project]
 name = "dify-datasource-ndjson"
-version = "0.0.3"
+version = "0.0.4"
 description = "Ingest a bulk NDJSON dump (optionally via a JSON manifest of compressed exports) into a Dify Knowledge base"
 readme = "README.md"
 requires-python = ">=3.12"
